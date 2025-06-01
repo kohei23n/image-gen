@@ -60,9 +60,9 @@ ds = ds.prefetch(64)
 # 3. Build Neural Network
 
 ## bring in the sequential api for the generator and discriminatoir
-from tensorflow.keras.models import Sequential
+from keras.models import Sequential
 ## bringing in the layers for the neural network
-from tensorflow.keras.layers import Conv2D, Dense, Flatten, Reshape, LeakyReLU, Dropout, UpSampling2D
+from keras.layers import Conv2D, Dense, Flatten, Reshape, LeakyReLU, Dropout, UpSampling2D
 
 def build_generator():
     model = Sequential()
@@ -153,9 +153,9 @@ discriminator.predict(img)
 # 4. Contruct Training Loop
 
 ## adam is going to be the optimiser for both
-from tensorflow.keras.optimizers import Adam
+from keras.optimizers import Adam
 ## binary cross entropy is going to be the loss for both
-from tensorflow.keras.losses import BinaryCrossentropy
+from keras.losses import BinaryCrossentropy
 
 g_opt = Adam(learning_rate=0.0001)
 d_opt = Adam(learning_rate=0.00001)
@@ -163,7 +163,7 @@ g_loss = BinaryCrossentropy()
 d_loss = BinaryCrossentropy()
 
 ## importing the base model class to subclass our training step
-from tensorflow.keras.models import Model
+from keras.models import Model
 
 class FashionGAN(Model):
     def __init__(self, generator, discriminator, *args, **kwargs):
@@ -239,8 +239,8 @@ fashgan.compile(g_opt, d_opt, g_loss, d_loss)
 
 ## build calllback
 import os
-from tensorflow.keras.preprocessing.image import array_to_img
-from tensorflow.keras.callbacks import Callback
+from keras.preprocessing.image import array_to_img
+from keras.callbacks import Callback
 
 class ModelMonitor(Callback):
     def __init__(self, num_img=3, latent_dim=128):
