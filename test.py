@@ -273,4 +273,4 @@ imgs = generator.predict(tf.random.normal((16, 128, 1)))
 fig, ax = plt.subplots(ncols=4, nrows=4, figsize=(20, 20))
 for r in range(4):
     for c in range(4):
-        ax[r, c].imshow(imgs[(r+1)*(c+1)-1])
+        ax[r][c].imshow(imgs[(r+1)*(c+1)-1])
