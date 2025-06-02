@@ -51,8 +51,8 @@ ds = ds.map(scale_images)
 ds = ds.cache()
 ## shuffle it up
 ds = ds.shuffle(60000)
-## batch into 128 images per sample
-ds = ds.batch(128)
+## batch into 512 images per sample
+ds = ds.batch(512)
 ## reduces the likelihood of bottlenecking
 ds = ds.prefetch(64)
 
@@ -239,7 +239,8 @@ fashgan.compile(g_opt, d_opt, g_loss, d_loss)
 
 ## build calllback
 import os
-from keras.preprocessing.image import array_to_img
+# from keras.preprocessing.image import array_to_img
+from keras.utils.image_utils import array_to_img
 from keras.callbacks import Callback
 
 class ModelMonitor(Callback):
@@ -256,8 +257,25 @@ class ModelMonitor(Callback):
             img = array_to_img(generated_images[i])
             img.save(os.path.join('images', f'generated_img_{epoch}_{i}.png'))
 
+
+## save checkpoints
+
+from keras.callbacks import ModelCheckpoint
+
+## make sure the directory exists
+os.makedirs('checkpoints', exist_ok=True)
+
+# save generator weights every 10 epochs
+checkpoint_callback = ModelCheckpoint(
+    filepath='checkpoints/generator_epoch_{epoch:03d}.h5',
+    save_weights_only=True,
+    save_freq=1170,
+    verbose=1
+)
+
 ## train
-hist = fashgan.fit(ds, epochs=20, callbacks=[ModelMonitor()])
+hist = fashgan.fit(ds, epochs=400, callbacks=[ModelMonitor(), checkpoint_callback])
+
 
 ## review performance
 plt.suptitle('Loss')
