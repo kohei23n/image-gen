@@ -80,36 +80,39 @@ from keras.layers import Conv2D, Dense, Flatten, Reshape, LeakyReLU, Dropout, Up
 def build_generator():
     model = Sequential()
     
-    ## takes in random values and reshapes it to 8x8x256 for 64x64 output
-    ## beginnings of a generated image
     model.add(Dense(8*8*256, input_dim=128))
     model.add(LeakyReLU(0.2))
     model.add(Reshape((8, 8, 256)))
 
-    ## upsampling block 1 - 8x8 to 16x16
+    # 8x8 -> 16x16
     model.add(UpSampling2D())
     model.add(Conv2D(128, 3, padding='same'))
     model.add(BatchNormalization())
     model.add(LeakyReLU(0.2))
 
-    ## upsampling block 2 - 16x16 to 32x32
+    # 16x16 -> 32x32
     model.add(UpSampling2D())
     model.add(Conv2D(64, 3, padding='same'))
     model.add(BatchNormalization())
     model.add(LeakyReLU(0.2))
 
-    ## upsampling block 3 - 32x32 to 64x64
+    # 32x32 -> 64x64
     model.add(UpSampling2D())
     model.add(Conv2D(32, 3, padding='same'))
     model.add(BatchNormalization())
     model.add(LeakyReLU(0.2))
 
-    ## convolutional block for refinement
-    model.add(Conv2D(32, 3, padding='same'))
+    # Add extra upsampling layers for 64x64 -> 128x128 -> 256x256
+    model.add(UpSampling2D())
+    model.add(Conv2D(16, 3, padding='same'))
     model.add(BatchNormalization())
     model.add(LeakyReLU(0.2))
 
-    ## conv layer to get to three channels (RGB) with tanh activation
+    model.add(UpSampling2D())
+    model.add(Conv2D(8, 3, padding='same'))
+    model.add(BatchNormalization())
+    model.add(LeakyReLU(0.2))
+
     model.add(Conv2D(3, 3, padding='same', activation='tanh'))
 
     return model
@@ -123,32 +126,33 @@ print(img.shape)
 def build_discriminator():
     model = Sequential()
 
-    ## convolutional block 1 - now expects 64x64x3 RGB images
-    model.add(Conv2D(32, 4, strides=2, padding='same', input_shape=(64, 64, 3)))
+    model.add(Conv2D(32, 4, strides=2, padding='same', input_shape=(256, 256, 3)))  # 256 -> 128
     model.add(LeakyReLU(0.2))
     model.add(Dropout(0.3))
 
-    ## convolutional block 2 - 32x32
-    model.add(Conv2D(64, 4, strides=2, padding='same'))
+    model.add(Conv2D(64, 4, strides=2, padding='same'))  # 128 -> 64
     model.add(LeakyReLU(0.2))
     model.add(Dropout(0.3))
 
-    ## convolutional block 3 - 16x16
-    model.add(Conv2D(128, 4, strides=2, padding='same'))
+    model.add(Conv2D(128, 4, strides=2, padding='same'))  # 64 -> 32
     model.add(LeakyReLU(0.2))
     model.add(Dropout(0.3))
 
-    ## convolutional block 4 - 8x8
-    model.add(Conv2D(256, 4, strides=2, padding='same'))
+    model.add(Conv2D(256, 4, strides=2, padding='same'))  # 32 -> 16
     model.add(LeakyReLU(0.2))
     model.add(Dropout(0.3))
 
-    ## flatten then pass to dense layer
+    # Add another downsampling layer for 16 -> 8
+    model.add(Conv2D(512, 4, strides=2, padding='same'))
+    model.add(LeakyReLU(0.2))
+    model.add(Dropout(0.3))
+
     model.add(Flatten())
     model.add(Dropout(0.3))
     model.add(Dense(1, activation='sigmoid'))
 
     return model
+
 
 discriminator = build_discriminator()
 
@@ -284,5 +288,10 @@ fig, ax = plt.subplots(1, num_images, figsize=(num_images * 4, 4))
 for i in range(num_images):
     ax[i].imshow(generated_images[i])
     ax[i].axis('off')
+
+    # Save image as PNG
+    from PIL import Image
+    pil_img = Image.fromarray((img * 255).astype('uint8'))
+    pil_img.save(f'images/img_{i+1}.png')
 
 plt.show()
