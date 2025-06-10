@@ -52,12 +52,20 @@ def scale_images(image):
 ds = load_custom_dataset('data/frames', img_size=(64, 64))
 ## running the dataset through the scale_images preprocessing function
 ds = ds.map(scale_images)
+## augment the dataset with some random transformations
+def augment(image):
+    image = tf.image.random_flip_left_right(image)
+    image = tf.image.random_brightness(image, max_delta=0.1)
+    image = tf.image.random_contrast(image, lower=0.9, upper=1.1)
+    # you can add more augmentations as needed
+    return image
+ds = ds.map(augment)
 ## cache the dataset for that batch
 ds = ds.cache()
 ## shuffle it up (adjust number based on your dataset size)
 ds = ds.shuffle(1000)  # Reduced from 60000 since you likely have fewer images
 ## batch into smaller batches due to larger images
-ds = ds.batch(32)  # Reduced from 512 due to memory constraints
+ds = ds.batch(4)  # Reduced from 512 due to memory constraints
 ## reduces the likelihood of bottlenecking
 ds = ds.prefetch(16)  # Reduced accordingly
 
@@ -67,7 +75,7 @@ ds = ds.prefetch(16)  # Reduced accordingly
 ## bring in the sequential api for the generator and discriminatoir
 from keras.models import Sequential
 ## bringing in the layers for the neural network
-from keras.layers import Conv2D, Dense, Flatten, Reshape, LeakyReLU, Dropout, UpSampling2D
+from keras.layers import Conv2D, Dense, Flatten, Reshape, LeakyReLU, Dropout, UpSampling2D, BatchNormalization
 
 def build_generator():
     model = Sequential()
@@ -81,20 +89,24 @@ def build_generator():
     ## upsampling block 1 - 8x8 to 16x16
     model.add(UpSampling2D())
     model.add(Conv2D(128, 3, padding='same'))
+    model.add(BatchNormalization())
     model.add(LeakyReLU(0.2))
 
     ## upsampling block 2 - 16x16 to 32x32
     model.add(UpSampling2D())
     model.add(Conv2D(64, 3, padding='same'))
+    model.add(BatchNormalization())
     model.add(LeakyReLU(0.2))
 
     ## upsampling block 3 - 32x32 to 64x64
     model.add(UpSampling2D())
     model.add(Conv2D(32, 3, padding='same'))
+    model.add(BatchNormalization())
     model.add(LeakyReLU(0.2))
 
     ## convolutional block for refinement
     model.add(Conv2D(32, 3, padding='same'))
+    model.add(BatchNormalization())
     model.add(LeakyReLU(0.2))
 
     ## conv layer to get to three channels (RGB) with tanh activation
@@ -105,7 +117,7 @@ def build_generator():
 generator = build_generator()
 
 ## generate new nostalgic images
-img = generator.predict(np.random.randn(4, 128, 1))
+img = generator.predict(np.random.randn(4, 128))
 print(img.shape)
 
 def build_discriminator():
@@ -178,44 +190,41 @@ class NostalgiaGAN(Model):
         self.d_loss = d_loss
 
     def train_step(self, batch):
-        ## get the data
         real_images = batch
-        fake_images = self.generator(tf.random.normal((32, 128, 1)), training=False)
+        batch_size = tf.shape(real_images)[0]
 
-        ## train the discriminator
+        fake_images = self.generator(tf.random.normal((batch_size, 128)), training=False)
+
+        # Real labels: smooth between 0.8 and 1.0
+        real_labels = tf.random.uniform((batch_size, 1), 0.8, 1.0)
+
+        # Fake labels: smooth between 0.0 and 0.2
+        fake_labels = tf.random.uniform((batch_size, 1), 0.0, 0.2)
+
+        # Occasionally flip labels (e.g., 10%)
+        flip_mask = tf.random.uniform((batch_size, 1)) < 0.1
+        real_labels = tf.where(flip_mask, fake_labels, real_labels)
+        fake_labels = tf.where(flip_mask, real_labels, fake_labels)
+
         with tf.GradientTape() as d_tape:
-            ## pass the real and fake images to the discriminator model
             yhat_real = self.discriminator(real_images, training=True)
             yhat_fake = self.discriminator(fake_images, training=True)
-            yhat_realfake = tf.concat([yhat_real, yhat_fake], axis=0)
 
-            ## create labels for real and fake images
-            y_realfake = tf.concat([tf.zeros_like(yhat_real), tf.ones_like(yhat_fake)], axis=0)
+            d_loss_real = self.d_loss(real_labels, yhat_real)
+            d_loss_fake = self.d_loss(fake_labels, yhat_fake)
+            total_d_loss = d_loss_real + d_loss_fake
 
-            ## add some noise to the TRUE outputs
-            noise_real = 0.15*tf.random.uniform(tf.shape(yhat_real))
-            noise_fake = 0.15*tf.random.uniform(tf.shape(yhat_fake))
-            y_realfake += tf.concat([noise_real, noise_fake], axis=0)
-
-            ## calcuate loss
-            total_d_loss = self.d_loss(y_realfake, yhat_realfake)
-
-        ## apply background propagation -- nn learn
         dgrad = d_tape.gradient(total_d_loss, self.discriminator.trainable_variables)
         self.d_opt.apply_gradients(zip(dgrad, self.discriminator.trainable_variables))
-        
-        ## train the generator
-        with tf.GradientTape() as g_tape:
-            ## generate some new images
-            gen_images = self.generator(tf.random.normal((32, 128, 1)), training=True)
 
-            ## create the predicted labels
+        with tf.GradientTape() as g_tape:
+            gen_images = self.generator(tf.random.normal((batch_size, 128)), training=True)
             predicted_labels = self.discriminator(gen_images, training=False)
 
-            ## calculate loss - trick to training to fake out the discriminator
-            total_g_loss = self.g_loss(tf.zeros_like(predicted_labels), predicted_labels)
+            # Generator tries to fool discriminator into thinking fakes are real (labels=1)
+            trick_labels = tf.ones_like(predicted_labels)
+            total_g_loss = self.g_loss(trick_labels, predicted_labels)
 
-        ## apply backprop
         ggrad = g_tape.gradient(total_g_loss, self.generator.trainable_variables)
         self.g_opt.apply_gradients(zip(ggrad, self.generator.trainable_variables))
 
@@ -223,6 +232,7 @@ class NostalgiaGAN(Model):
             'd_loss': total_d_loss,
             'g_loss': total_g_loss
         }
+
 
 ## create instance of subclassed model
 nostalgiagan = NostalgiaGAN(generator, discriminator)
@@ -237,25 +247,6 @@ from keras.callbacks import Callback
 ## make sure the images directory exists
 os.makedirs('images', exist_ok=True)
 
-class ModelMonitor(Callback):
-    def __init__(self, num_img=3, latent_dim=128):
-        self.num_img = num_img
-        self.latent_dim = latent_dim
-
-    def on_epoch_end(self, epoch, logs=None):
-        random_latent_vectors = tf.random.normal((self.num_img, self.latent_dim, 1))
-        generated_images = self.model.generator(random_latent_vectors)
-        # Convert from [-1,1] to [0,1] then to [0,255] for saving
-        generated_images = (generated_images + 1) / 2.0
-        generated_images = generated_images * 255
-        generated_images = generated_images.numpy()
-        for i in range(self.num_img):
-            img = array_to_img(generated_images[i])
-            img.save(os.path.join('images', f'generated_img_{epoch}_{i}.png'))
-
-
-## save checkpoints
-
 from keras.callbacks import ModelCheckpoint
 
 ## make sure the directory exists
@@ -265,12 +256,12 @@ os.makedirs('checkpoints', exist_ok=True)
 checkpoint_callback = ModelCheckpoint(
     filepath='checkpoints/generator_epoch_{epoch:03d}.h5',
     save_weights_only=True,
-    save_freq=1170,
+    save_freq=500,
     verbose=1
 )
 
 ## train
-hist = nostalgiagan.fit(ds, epochs=400, callbacks=[ModelMonitor(), checkpoint_callback])
+hist = nostalgiagan.fit(ds, epochs=1000, callbacks=[checkpoint_callback])
 
 
 ## review performance
@@ -283,15 +274,15 @@ plt.show()
 
 # 5. Test Out the Generator
 
-imgs = generator.predict(tf.random.normal((16, 128, 1)))
-# Convert from [-1,1] back to [0,1] for display
-imgs = (imgs + 1) / 2.0
-fig, ax = plt.subplots(ncols=4, nrows=4, figsize=(20, 20))
-for r in range(4):
-    for c in range(4):
-        idx = r * 4 + c  # Correct indexing
-        ax[r][c].imshow(imgs[idx])
-        ax[r][c].axis('off')
+num_images = 5
+random_latent_vectors = tf.random.normal((num_images, 128))
+generated_images = generator(random_latent_vectors)
+generated_images = (generated_images + 1) / 2.0
 
-plt.tight_layout()
+fig, ax = plt.subplots(1, num_images, figsize=(num_images * 4, 4))
+
+for i in range(num_images):
+    ax[i].imshow(generated_images[i])
+    ax[i].axis('off')
+
 plt.show()
