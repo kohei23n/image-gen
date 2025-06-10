@@ -44,9 +44,6 @@ ds = load_custom_dataset('data/frames', img_size=(64, 64))
 ## setup connection aka iterator
 dataiterator = ds.as_numpy_iterator()
 
-## setup the subplot formatting
-fig, ax = plt.subplots(ncols=4, figsize=(20,20))
-
 ## scale images to [-1, 1] range for better GAN training
 def scale_images(image):
     return (image * 2.0) - 1.0
@@ -110,9 +107,6 @@ generator = build_generator()
 ## generate new nostalgic images
 img = generator.predict(np.random.randn(4, 128, 1))
 print(img.shape)
-
-## setup the subplot formatting
-fig, ax = plt.subplots(ncols=4, figsize=(20,20))
 
 def build_discriminator():
     model = Sequential()
@@ -295,5 +289,9 @@ imgs = (imgs + 1) / 2.0
 fig, ax = plt.subplots(ncols=4, nrows=4, figsize=(20, 20))
 for r in range(4):
     for c in range(4):
-        ax[r][c].imshow(imgs[(r+1)*(c+1)-1])
+        idx = r * 4 + c  # Correct indexing
+        ax[r][c].imshow(imgs[idx])
         ax[r][c].axis('off')
+
+plt.tight_layout()
+plt.show()
