@@ -49,7 +49,7 @@ def scale_images(image):
     return (image * 2.0) - 1.0
 
 ## reload the dataset and apply preprocessing
-ds = load_custom_dataset('data/frames', img_size=(64, 64))
+ds = load_custom_dataset('data/frames', img_size=(256, 256))
 ## running the dataset through the scale_images preprocessing function
 ds = ds.map(scale_images)
 ## augment the dataset with some random transformations
