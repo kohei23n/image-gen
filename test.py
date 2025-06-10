@@ -277,20 +277,22 @@ plt.show()
 
 
 # 5. Test Out the Generator
+from PIL import Image
 
 num_images = 5
 random_latent_vectors = tf.random.normal((num_images, 128))
 generated_images = generator(random_latent_vectors)
-generated_images = (generated_images + 1) / 2.0
+generated_images = (generated_images + 1) / 2.0  # scale to [0,1]
 
 fig, ax = plt.subplots(1, num_images, figsize=(num_images * 4, 4))
 
 for i in range(num_images):
-    ax[i].imshow(generated_images[i])
+    img = generated_images[i].numpy()  # convert to numpy array
+    img = img.squeeze()  # remove extra dims if any
+    ax[i].imshow(img)
     ax[i].axis('off')
 
     # Save image as PNG
-    from PIL import Image
     pil_img = Image.fromarray((img * 255).astype('uint8'))
     pil_img.save(f'images/img_{i+1}.png')
 
